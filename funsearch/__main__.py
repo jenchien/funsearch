@@ -177,24 +177,31 @@ def runAsync(spec_file, inputs, model, output_path, load_backup, iterations, san
         conf.programs_database, template, function_to_evolve, identifier=timestamp)
     if load_backup:
         # If load_backup is a file that exists directly, use it
-        if os.path.isfile(load_backup):
+        if hasattr(load_backup, 'read'):
+            # load_backup is already a file-like object
             database.load(load_backup)
-        else:
-            # If it's a string/number or partial path, search in backups folder
-            backup_dir = os.path.join(output_path, "backups")
-            matching_files = []
-            for root, dirs, files in os.walk(backup_dir):
-                for file in files:
-                    if load_backup in file:
-                        matching_files.append(os.path.join(root, file))
-            
-            if matching_files:
-                # Get most recently modified matching file
-                latest_file = max(matching_files, key=os.path.getmtime)
-                logging.info(f"Found backup file: {latest_file}")
-                database.load(latest_file)
+        elif isinstance(load_backup, (str, bytes, os.PathLike)):
+            if os.path.isfile(load_backup):
+                with open(load_backup, 'rb') as f:
+                    database.load(f)
+
             else:
-                raise FileNotFoundError(f"Could not find backup file matching '{load_backup}' in {backup_dir}")
+                # If it's a string/number or partial path, search in backups folder
+                backup_dir = os.path.join(output_path, "backups")
+                matching_files = []
+                for root, dirs, files in os.walk(backup_dir):
+                    for file in files:
+                        if load_backup in file:
+                            matching_files.append(os.path.join(root, file))
+                
+                if matching_files:
+                    # Get most recently modified matching file
+                    latest_file = max(matching_files, key=os.path.getmtime)
+                    logging.info(f"Found backup file: {latest_file}")
+                    with open(latest_file, 'rb') as f:
+                        database.load(f)
+                else:
+                    raise FileNotFoundError(f"Could not find backup file matching '{load_backup}' in {backup_dir}")
 
     parsed_inputs = parse_input(inputs)
     sandbox_class = next(c for c in SANDBOX_TYPES if c.__name__ == sandbox)
